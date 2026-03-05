@@ -1,0 +1,24 @@
+{
+  "fundamentals": {
+    "EBITDA": 1684509949952.0,
+    "currentRatio": null,
+    "debtToEquity": 35.651,
+    "forwardPE": 21.546375,
+    "industry": "Oil & Gas Refining & Marketing",
+    "longName": "Reliance Industries Limited",
+    "marketCap": 19254002843648.0,
+    "operatingMargins": 0.11852,
+    "priceToBook": 2.1952727,
+    "profitMargins": 0.08122,
+    "quickRatio": null,
+    "returnOnEquity": null,
+    "sector": "Energy",
+    "symbol": "RELIANCE.NS",
+    "trailingPE": 23.14625
+  },
+  "prob_combined": 0.4402611374855041,
+  "prob_lstm": 0.4566877484321594,
+  "prob_xgb": 0.41562122106552124,
+  "signal": "SELL",
+  "symbol": "RELIANCE"
+}

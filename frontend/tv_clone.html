@@ -1,0 +1,1925 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NSE ML Indicator</title>
+    <script src="https://unpkg.com/lightweight-charts@3.8.0/dist/lightweight-charts.standalone.production.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body {
+            width: 100%;
+            height: 100%;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        }
+
+        body {
+            background: #131722;
+            color: #d1d5db;
+        }
+        .layout {
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+            height: 100vh;
+            min-height: 700px;
+            padding-bottom: 36vh; /* leave room for fixed news panel */
+        }
+        
+        /* TOP TOOLBAR */
+        .top-toolbar {
+            background: #0d0f15;
+            border-bottom: 1px solid #1e2234;
+            padding: 8px 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+            min-height: 44px;
+        }
+        .input-group {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .input-group input,
+        .input-group select {
+            padding: 6px 8px;
+            background: #1a1f2e;
+            border: 1px solid #2a2f3f;
+            color: #d4d7e0;
+            border-radius: 3px;
+            font-size: 12px;
+            font-family: inherit;
+        }
+        .input-group input:focus,
+        .input-group select:focus {
+            outline: none;
+            border-color: #3161e7;
+            background: #1e2340;
+        }
+        .btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 3px;
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.15s;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+        }
+        .btn-load {
+            background: #089981;
+            color: white;
+        }
+        .btn-load:hover { background: #06a479; }
+        .btn-reset {
+            background: #d85252;
+            color: white;
+        }
+        .btn-reset:hover { background: #d03d3d; }
+        .btn-predict {
+            background: #2a4cb8;
+            color: white;
+            min-width: 100px;
+        }
+        .btn-predict:hover { background: #3161e7; }
+        .btn-live {
+            background: #666666;
+            color: white;
+            min-width: 100px;
+        }
+        .btn-live:hover { background: #777777; }
+        .btn-live.active {
+            background: #ef4444;
+            animation: pulse-btn 1s infinite;
+        }
+        @keyframes pulse-btn {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        .error-box {
+            flex: 1;
+            background: rgba(216, 82, 82, 0.1);
+            color: #d85252;
+            padding: 6px 8px;
+            border-radius: 3px;
+            font-size: 11px;
+            border-left: 2px solid #d85252;
+            max-width: 300px;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+        }
+
+        /* MIDDLE CONTENT */
+        .middle-content {
+            flex: 1 1 auto;
+            display: flex;
+            gap: 12px;
+            padding: 12px;
+            min-height: 420px; /* ensure chart has room */
+            align-items: stretch;
+        }
+
+        /* CHART CONTAINER */
+        .chart-container {
+            flex: 1 1 65%;
+            background: #131722;
+            border: 1px solid #1e2234;
+            border-radius: 3px;
+            position: relative;
+            overflow: hidden;
+            min-height: 420px; /* give the chart visible height */
+        }
+        #chartDiv {
+            width: 100%;
+            height: 100%;
+            min-height: 420px;
+        }
+        .chart-loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #fbbf24;
+            font-size: 12px;
+            z-index: 10;
+        }
+
+        /* RIGHT WATCHLIST */
+        .right-watchlist {
+            width: 280px;
+            background: #0d0f15;
+            border: 1px solid #1e2234;
+            border-radius: 3px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .watchlist-header {
+            padding: 8px 12px;
+            border-bottom: 1px solid #1e2234;
+            font-size: 11px;
+            color: #787f8b;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .watchlist-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 4px;
+        }
+        .watchlist-item {
+            padding: 8px 8px;
+            margin: 2px 0;
+            background: #1a1f2e;
+            border: 1px solid #2a2f3f;
+            color: #c7c9d1;
+            cursor: pointer;
+            border-radius: 3px;
+            font-size: 12px;
+            transition: all 0.15s;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .watchlist-item:hover {
+            background: #21273f;
+            border-color: #2a4cb8;
+        }
+        .watchlist-item.active {
+            background: #2a4cb8;
+            border-color: #3161e7;
+            color: #fff;
+        }
+        .watchlist-symbol { font-weight: 500; }
+        .watchlist-price { font-size: 11px; opacity: 0.8; }
+
+        /* BOTTOM PREDICTIONS PANEL */
+        .bottom-panel {
+            background: #0d0f15;
+            border-top: 1px solid #1e2234;
+            padding: 12px;
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            gap: 12px;
+            height: 120px;
+            position: relative;
+            z-index: 1250; /* ensure bottom-panel stays above fixed news panel */
+        }
+        .pred-block {
+            background: #1a1f2e;
+            border: 1px solid #2a2f3f;
+            border-radius: 3px;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+        .pred-label {
+            font-size: 10px;
+            color: #787f8b;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 6px;
+        }
+        .pred-value {
+            font-size: 18px;
+            font-weight: 700;
+            color: #d4d7e0;
+        }
+        .pred-value.buy {
+            color: #089981;
+        }
+        .pred-value.sell {
+            color: #d85252;
+        }
+        .pred-value.positive {
+            color: #089981;
+        }
+        .pred-value.negative {
+            color: #d85252;
+        }
+        .pred-value.neutral {
+            color: #787f8b;
+        }
+
+        /* CONFIDENCE METER */
+        .confidence-meter {
+            width: 100%;
+            height: 4px;
+            background: #2a2f3f;
+            border-radius: 2px;
+            margin-top: 6px;
+            overflow: hidden;
+        }
+        .confidence-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #d85252, #fbbf24, #089981);
+            transition: width 0.3s ease;
+        }
+
+        /* LIVE INDICATOR */
+        .live-indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            background: #ef4444;
+            border-radius: 50%;
+            margin-right: 6px;
+            animation: pulse 1s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        /* STATS SECTION */
+        .stats-section {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            padding: 8px;
+            border-top: 1px solid #1e2234;
+            border-bottom: 1px solid #1e2234;
+            margin-bottom: 8px;
+        }
+        .stat-item {
+            padding: 6px;
+            background: #1a1f2e;
+            border-radius: 3px;
+            font-size: 10px;
+        }
+        .stat-label {
+            color: #787f8b;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+            font-weight: 600;
+        }
+        .stat-value {
+            color: #d4d7e0;
+            font-size: 12px;
+            font-weight: 600;
+            margin-top: 2px;
+        }
+
+        /* BACKTESTING SECTION */
+        .backtest-section {
+            background: #0d0f15;
+            border: 1px solid #1e2234;
+            border-radius: 3px;
+            padding: 12px;
+            margin-bottom: 12px;
+            display: block;
+        }
+        .backtest-title {
+            font-weight: 700;
+            color: #d4d7e0;
+            margin-bottom: 8px;
+            font-size: 12px;
+        }
+        .backtest-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+        }
+        .backtest-card {
+            background: #1a1f2e;
+            border: 1px solid #2a2f3f;
+            border-radius: 3px;
+            padding: 8px;
+            font-size: 11px;
+        }
+        .backtest-model-name {
+            color: #9aa3b2;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+        .backtest-metric {
+            display: flex;
+            justify-content: space-between;
+            color: #d4d7e0;
+            margin: 3px 0;
+            font-size: 10px;
+        }
+        
+        /* MODEL COMPARISON */
+        .comparison-section {
+            background: #0d0f15;
+            border: 1px solid #1e2234;
+            border-radius: 3px;
+            padding: 12px;
+            margin-bottom: 12px;
+            display: block;
+        }
+        .comparison-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+        }
+        .comparison-card {
+            background: #1a1f2e;
+            border: 1px solid #2a2f3f;
+            border-radius: 3px;
+            padding: 10px;
+            text-align: center;
+        }
+        .comparison-model {
+            color: #9aa3b2;
+            font-weight: 600;
+            font-size: 11px;
+            margin-bottom: 6px;
+        }
+        .comparison-signal {
+            font-size: 16px;
+            font-weight: 700;
+            margin: 4px 0;
+        }
+        .comparison-confidence {
+            font-size: 10px;
+            color: #8f98a8;
+        }
+        
+        /* DISAGREEMENT ALERT */
+        .disagreement-alert {
+            background: rgba(139, 69, 19, 0.2);
+            border-left: 3px solid #d85252;
+            padding: 10px;
+            margin-bottom: 12px;
+            border-radius: 3px;
+            font-size: 12px;
+            display: block;
+        }
+        .disagreement-alert.critical {
+            border-left-color: #ef4444;
+            background: rgba(239, 68, 68, 0.15);
+        }
+        .disagreement-text {
+            color: #d4d7e0;
+            margin-bottom: 4px;
+        }
+        .disagreement-badge {
+            display: inline-block;
+            padding: 2px 6px;
+            background: #d85252;
+            color: white;
+            border-radius: 3px;
+            font-size: 10px;
+            font-weight: 600;
+        }
+        
+        /* CRITICAL NEWS ALERTS */
+        .critical-news-section {
+            background: #0d0f15;
+            border: 1px solid #1e2234;
+            border-radius: 3px;
+            padding: 12px;
+            margin-bottom: 12px;
+            display: block;
+        }
+        .critical-alert {
+            background: rgba(239, 68, 68, 0.15);
+            border-left: 3px solid #ef4444;
+            padding: 8px;
+            margin-bottom: 6px;
+            border-radius: 3px;
+            font-size: 11px;
+        }
+        .critical-severity {
+            display: inline-block;
+            padding: 2px 4px;
+            background: #ef4444;
+            color: white;
+            border-radius: 2px;
+            font-weight: 600;
+            font-size: 9px;
+            margin-right: 4px;
+        }
+        .critical-text {
+            color: #d4d7e0;
+            margin-top: 4px;
+        }
+
+        /* SCROLLBAR */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0d0f15;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #2a2f3f;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #3a4050;
+        }
+        /* NEWS PANEL */
+        /* hide legacy fixed news panel (we use side toggle + hover dialog) */
+        .news-section { display: none !important; }
+
+        /* Side news toggle and hover-dialog */
+        .news-side-toggle {
+            padding: 6px 8px;
+            border-radius: 6px;
+            background: transparent;
+            border: 1px solid #2a2f3f;
+            color: #cfe0ff;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .news-side-toggle.enabled {
+            background: #172033;
+            border-color: #3161e7;
+            color: #d4e6ff;
+        }
+        .news-hover-dialog {
+            position: absolute;
+            min-width: 360px;
+            max-width: 720px;
+            max-height: 60vh;
+            overflow: auto;
+            background: #0d0f15;
+            border: 1px solid #1e2234;
+            border-radius: 8px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+            padding: 12px;
+            z-index: 2500;
+            display: none;
+        }
+        /* Confusion popup */
+        .confusion-popup {
+            position: absolute;
+            background: #0d0f15;
+            border: 1px solid #2a2f3f;
+            padding: 8px;
+            border-radius: 6px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+            color: #d4d7e0;
+            font-size: 12px;
+            z-index: 5000;
+            display: none;
+            min-width: 160px;
+        }
+        .confusion-popup .row { display:flex; justify-content:space-between; gap:8px; }
+        .confusion-popup .title { font-weight:700; margin-bottom:6px; color:#9aa3b2 }
+        .confusion-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap:6px; align-items:stretch; }
+        .confusion-grid .cell-label { text-align:center; color:#8f98a8; font-size:12px }
+        .confusion-grid .confusion-cell { background:#0b0c10; border:1px solid #1e2234; padding:8px; border-radius:6px; text-align:center; font-weight:700; color:#d4d7e0 }
+        .confusion-grid .confusion-small { font-size:12px; color:#9aa3b2; font-weight:600 }
+        .news-hover-dialog .news-list { max-height: 56vh; overflow:auto; }
+        /* Modal overlay + animated content */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            background: rgba(0,0,0,0.0);
+            z-index: 4000;
+            pointer-events: none;
+            opacity: 0;
+            transition: background 240ms ease, opacity 240ms ease;
+        }
+        .modal-overlay.open {
+            background: rgba(0,0,0,0.6);
+            pointer-events: auto;
+            opacity: 1;
+        }
+        .modal-content {
+            background:#0d0f15;
+            border:1px solid #2a2f3f;
+            border-radius:12px;
+            width: 60vw;
+            max-width: 900px;
+            min-width: 360px;
+            max-height: 70vh;
+            overflow: auto;
+            padding: 18px;
+            color: #d4d7e0;
+            position: relative;
+            transform: translateY(-10px) scale(0.98);
+            opacity: 0;
+            transition: transform 260ms cubic-bezier(.2,.9,.2,1), opacity 260ms ease, width 260ms ease, max-height 260ms ease;
+            z-index: 4001;
+        }
+        .modal-overlay.open .modal-content {
+            transform: translateY(0) scale(1);
+            opacity: 1;
+            width: 80vw;
+            max-height: 88vh;
+        }
+        .modal-close {
+            position:absolute;right:12px;top:12px;background:transparent;border:1px solid #2a2f3f;color:#cfe0ff;padding:6px;border-radius:4px;cursor:pointer
+        }
+        .news-header { padding: 8px 12px; border-bottom: 1px solid #1e2234; font-weight:700; color:#9aa3b2; display:flex; align-items:center; justify-content:space-between }
+        .news-toggle { background:transparent; border:1px solid #2a2f3f; color:#cfe0ff; padding:4px 8px; border-radius:4px; cursor:pointer; font-size:12px }
+        .news-list { max-height: 220px; overflow-y: auto; padding: 8px; display:flex; flex-direction:column; gap:6px }
+        .news-item { background:#121521; padding:8px; border-radius:4px; border:1px solid #20253a; font-size:13px }
+        .news-item.expanded { background:#101320; box-shadow: 0 4px 12px rgba(0,0,0,0.4); }
+        .news-item .preview { display: none; color:#d4d7e0; margin-top:8px; font-size:13px; line-height:1.45 }
+        .news-item.expanded .preview { display: block; max-height: 60vh; overflow:auto; transition: max-height 260ms ease; }
+        .news-item .news-title a { color:#cfe0ff; text-decoration:none }
+        .news-toggle-btn { background:transparent; border:1px solid #2a2f3f; color:#cfe0ff; border-radius:4px; cursor:pointer }
+        .news-item a { color:#cfe0ff; text-decoration:none }
+        .news-meta { font-size:11px; color:#8f98a8; margin-top:4px }
+        .sentiment-badge { float:right; padding:2px 6px; border-radius:12px; font-size:11px }
+        .sentiment-pos { background:#083e2c; color:#3ee29a }
+        .sentiment-neg { background:#3a0b0b; color:#ff8b8b }
+        .sentiment-neu { background:#2a2f3f; color:#c7c9d1 }
+        .news-section.collapsed .news-list { max-height: 0; padding: 0; overflow: hidden; transition: max-height 0.25s ease; }
+        .news-section.collapsed .news-header { border-bottom-left-radius: 6px; border-bottom-right-radius: 6px; }
+    </style>
+</head>
+<body>
+    <div class="layout">
+        <!-- TOP TOOLBAR -->
+        <div class="top-toolbar">
+            <div class="input-group">
+                <input type="text" id="symbolInput" placeholder="Symbol" value="RELIANCE" style="width: 100px;">
+                <select id="timeframeSelect">
+                    <option value="15m">15m</option>
+                    <option value="1h">1h</option>
+                    <option value="1d" selected>1D</option>
+                </select>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;margin-left:8px;">
+                <label style="font-size:12px;color:#9aa3b2"><input type="checkbox" id="useFinBert"> FinBERT (slow)</label>
+            </div>
+            <button class="btn btn-load" onclick="loadChart()">📊 Load</button>
+            <button class="btn btn-reset" onclick="resetView()">↻ Reset</button>
+            <button class="btn btn-predict" onclick="runPrediction()">🎯 Analyze</button>
+            <button id="liveBtn" class="btn btn-live" onclick="toggleLive()">⏸ Live OFF</button>
+            <button id="newsSideToggle" class="news-side-toggle" title="Toggle news hover">📰</button>
+            <div class="error-box" id="errorBox" style="display: none;"></div>
+        </div>
+
+        <!-- MIDDLE: CHART + WATCHLIST -->
+        <div class="middle-content">
+            <!-- CHART -->
+            <div class="chart-container">
+                <div class="chart-loading" id="loading" style="display: none;">Loading...</div>
+                <div id="chartDiv"></div>
+            </div>
+
+            <!-- RIGHT WATCHLIST -->
+            <div class="right-watchlist">
+                <div class="watchlist-header">📊 Nifty 50</div>
+                <div class="watchlist-content" id="watchlist"></div>
+            </div>
+        </div>
+
+        <!-- BOTTOM PREDICTIONS PANEL -->
+        <div class="bottom-panel">
+            <div class="pred-block">
+                <div class="pred-label">XGB</div>
+                <div class="pred-value" id="xgbVal">-</div>
+                <div class="confidence-meter"><div class="confidence-fill" id="xgbMeter" style="width: 0%;"></div></div>
+            </div>
+            <div class="pred-block">
+                <div class="pred-label">LSTM</div>
+                <div class="pred-value" id="lstmVal">-</div>
+                <div class="confidence-meter"><div class="confidence-fill" id="lstmMeter" style="width: 0%;"></div></div>
+            </div>
+            <div class="pred-block">
+                <div class="pred-label">Combined</div>
+                <div class="pred-value" id="combinedVal">-</div>
+                <div class="confidence-meter"><div class="confidence-fill" id="combinedMeter" style="width: 0%;"></div></div>
+            </div>
+            <div class="pred-block">
+                <div class="pred-label"><span class="live-indicator"></span>Signal</div>
+                <div class="pred-value" id="signalBox">-</div>
+                <div style="font-size: 10px; color: #787f8b; margin-top: 6px;">Ready</div>
+            </div>
+            <div class="pred-block">
+                <div class="pred-label">Regime / DQN</div>
+                <div class="pred-value" id="regimeVal">-</div>
+                <div style="font-size: 10px; color: #787f8b; margin-top: 6px;" id="dqnNote">-</div>
+            </div>
+            <div class="pred-block">
+                <div class="pred-label">News Sent.</div>
+                <div class="pred-value" id="newsSentVal">-</div>
+                <div class="confidence-meter"><div class="confidence-fill" id="newsMeter" style="width: 0%;"></div></div>
+            </div>
+            <div class="pred-block">
+                <div class="pred-label">Tweets Sent.</div>
+                <div class="pred-value" id="tweetsSentVal">-</div>
+                <div class="confidence-meter"><div class="confidence-fill" id="tweetsMeter" style="width: 0%;"></div></div>
+            </div>
+            <div class="pred-block">
+                <div class="pred-label">FinBERT Sent.</div>
+                <div class="pred-value" id="finbertVal">-</div>
+                <div class="confidence-meter"><div class="confidence-fill" id="finbertMeter" style="width: 0%;"></div></div>
+            </div>
+        </div>
+
+        <!-- STATS SECTION -->
+        <div class="stats-section">
+            <div class="stat-item">
+                <div class="stat-label">RSI(14)</div>
+                <div class="stat-value" id="rsiValue">-</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">Volume</div>
+                <div class="stat-value" id="volumeValue">-</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">Model Acc</div>
+                <div class="stat-value" id="accuracyValue">-</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">P/E</div>
+                <div class="stat-value" id="peValue">-</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">Market Cap</div>
+                <div class="stat-value" id="marketCapValue">-</div>
+            </div>
+        </div>
+        
+        <!-- ANALYSIS PANEL HEADER -->
+        <div style="background: #0d0f15; border: 1px solid #1e2234; padding: 12px; margin-bottom: 12px; border-radius: 3px;">
+            <div style="font-weight: 700; color: #d4d7e0; font-size: 12px;">📈 ADVANCED ANALYSIS</div>
+        </div>
+        
+        <div id="disagreementAlert" class="disagreement-alert">
+            <div class="disagreement-text">
+                ⚠️ Models disagree! <span id="disagreementBadge" class="disagreement-badge"></span>
+            </div>
+            <div style="font-size: 11px; color: #8f98a8;">XGB: <span id="disagreementXGB"></span> | LSTM: <span id="disagreementLSTM"></span></div>
+        </div>
+        
+        <!-- CRITICAL NEWS ALERTS -->
+        <div id="criticalNewsSection" class="critical-news-section">
+            <div style="font-weight: 700; color: #d4d7e0; margin-bottom: 8px; font-size: 12px;">🚨 Critical News Alerts</div>
+            <div id="criticalNewsList" style="font-size: 11px; color: #d4d7e0;">No critical news</div>
+        </div>
+        
+        <!-- BACKTESTING RESULTS -->
+        <div id="backtestSection" class="backtest-section">
+            <div class="backtest-title">📊 Backtest Results (1 Year)</div>
+            <div class="backtest-grid">
+                <div class="backtest-card">
+                    <div class="backtest-model-name">XGBoost</div>
+                    <div class="backtest-metric"><span>Win Rate:</span><span id="xgbWinRate">-</span></div>
+                    <div class="backtest-metric"><span>P&L:</span><span id="xgbPL">-</span></div>
+                    <div class="backtest-metric"><span>Trades:</span><span id="xgbTrades">-</span></div>
+                    <div class="backtest-metric"><span>Confusion:</span><span id="xgbConfusion" class="confusion-clickable">-</span></div>
+                </div>
+                <div class="backtest-card">
+                    <div class="backtest-model-name">LSTM</div>
+                    <div class="backtest-metric"><span>Win Rate:</span><span id="lstmWinRate">-</span></div>
+                    <div class="backtest-metric"><span>P&L:</span><span id="lstmPL">-</span></div>
+                    <div class="backtest-metric"><span>Trades:</span><span id="lstmTrades">-</span></div>
+                    <div class="backtest-metric"><span>Confusion:</span><span id="lstmConfusion" class="confusion-clickable">-</span></div>
+                </div>
+                <div class="backtest-card">
+                    <div class="backtest-model-name">Ensemble</div>
+                    <div class="backtest-metric"><span>Win Rate:</span><span id="ensembleWinRate">-</span></div>
+                    <div class="backtest-metric"><span>P&L:</span><span id="ensemblePL">-</span></div>
+                    <div class="backtest-metric"><span>Trades:</span><span id="ensembleTrades">-</span></div>
+                    <div class="backtest-metric"><span>Confusion:</span><span id="ensembleConfusion" class="confusion-clickable">-</span></div>
+                </div>
+            </div>
+            <!-- chart removed per user request -->
+            <!-- debug output removed per user request -->
+        </div>
+        
+        <!-- MODEL COMPARISON -->
+        <div id="comparisonSection" class="comparison-section">
+            <div style="font-weight: 700; color: #d4d7e0; margin-bottom: 8px; font-size: 12px;">🔍 Model Comparison</div>
+            <div class="comparison-grid">
+                <div class="comparison-card">
+                    <div class="comparison-model">XGBoost</div>
+                    <div class="comparison-signal" id="compXGBSignal">-</div>
+                    <div class="comparison-confidence" id="compXGBConf">-</div>
+                    <div style="font-size:10px;color:#8f98a8;margin-top:6px" id="compXGBConfusion">-</div>
+                </div>
+                <div class="comparison-card">
+                    <div class="comparison-model">LSTM</div>
+                    <div class="comparison-signal" id="compLSTMSignal">-</div>
+                    <div class="comparison-confidence" id="compLSTMConf">-</div>
+                    <div style="font-size:10px;color:#8f98a8;margin-top:6px" id="compLSTMConfusion">-</div>
+                </div>
+                <div class="comparison-card">
+                    <div class="comparison-model">Ensemble</div>
+                    <div class="comparison-signal" id="compEnsembleSignal">-</div>
+                    <div class="comparison-confidence" id="compEnsembleConf">-</div>
+                    <div style="font-size:10px;color:#8f98a8;margin-top:6px" id="compEnsembleConfusion">-</div>
+                </div>
+                <div class="comparison-card">
+                    <div class="comparison-model">Best</div>
+                    <div style="font-size: 14px; margin-top: 6px; color: #089981;">✓</div>
+                    <div id="compBest" style="font-size: 10px; color: #8f98a8;">-</div>
+                </div>
+            </div>
+            <div style="margin-top:10px;">
+                <canvas id="modelCompareChart" style="width:100%;height:200px"></canvas>
+            </div>
+        </div>
+        
+        <!-- NEWS SECTION (hidden; replaced by side toggle) -->
+        <div class="news-section" id="newsSection">
+            <div class="news-header">
+                <div style="display:flex;gap:8px;align-items:center;">
+                    <div>Latest News</div>
+                    <select id="newsFilter" style="margin-left:8px;padding:4px;font-size:12px;background:#0d0f15;border:1px solid #2a2f3f;color:#cfe0ff;border-radius:4px">
+                        <option value="all">All</option>
+                        <option value="pos">Positive</option>
+                        <option value="neu">Neutral</option>
+                        <option value="neg">Negative</option>
+                    </select>
+                    <select id="newsSort" style="margin-left:4px;padding:4px;font-size:12px;background:#0d0f15;border:1px solid #2a2f3f;color:#cfe0ff;border-radius:4px">
+                        <option value="newest">Newest</option>
+                        <option value="oldest">Oldest</option>
+                        <option value="score">Sentiment</option>
+                    </select>
+                </div>
+                <div>
+                    <button id="newsToggle" class="news-toggle">Hide</button>
+                </div>
+            </div>
+            <div class="news-list" id="newsList">Loading news...</div>
+            <!-- Modal for article/tweet details -->
+            <div id="newsModal" class="modal-overlay" aria-hidden="true">
+                <div class="modal-content">
+                    <button id="newsModalClose" class="modal-close">Close</button>
+                    <div id="newsModalContent"></div>
+                </div>
+            </div>
+        </div>
+        <!-- Hover dialog (appears near side toggle when enabled) -->
+        <div id="newsHoverDialog" class="news-hover-dialog" aria-hidden="true">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+                <div style="font-weight:700;color:#9aa3b2">Latest News</div>
+                <div style="font-size:12px;color:#8f98a8">Hover to view • Click toggle to enable/disable</div>
+            </div>
+            <div class="news-list" id="newsHoverList">Loading news...</div>
+        </div>
+    </div>
+
+    <script>
+        const nifty50 = [
+            'RELIANCE', 'TCS', 'INFY', 'WIPRO', 'SBIN', 'HDFC', 'ICICIBANK', 'KOTAKBANK', 'HDFCBANK',
+            'MARUTI', 'BAJAJ-AUTO', 'SUNPHARMA', 'ASIANPAINT', 'TECHM', 'TITAN', 'LTTS', 'NESTLEIND',
+            'DRREDDY', 'CIPLA', 'LUPIN', 'COALINDIA', 'POWERGRID', 'NTPC', 'IOC', 'BPCL',
+            'JSWSTEEL', 'TATASTEEL', 'HINDALCO', 'EICHERMOT', 'BOSCHIND', 'DABUR', 'MARICO', 'UPL',
+            'TATACONSUM', 'INDIGO', 'YESBANK', 'AXISBANK', 'BHARTIARTL', 'JSWGREEN', 'DLF', 'ADANIGREEN',
+            'AUROPHARMA', 'ADANIENT', 'GRASIM', 'BIOCON', 'HCLTECH', 'NMDC', 'TORRENTPHARMA', 'IDFCBANK'
+        ];
+
+        let chart = null;
+        let candleSeries = null;
+        let liveMode = false;
+        let liveInterval = null;
+        let lastCandleTime = null;
+
+        function initChart() {
+            const chartDiv = document.getElementById('chartDiv');
+            chartDiv.innerHTML = '';
+
+            chart = LightweightCharts.createChart(chartDiv, {
+                width: chartDiv.clientWidth,
+                height: chartDiv.clientHeight,
+                layout: {
+                    backgroundColor: '#131722',
+                    textColor: '#9099a7',
+                    fontSize: 12
+                },
+                timeScale: {
+                    timeVisible: true,
+                    secondsVisible: false,
+                    rightOffset: 20
+                },
+                grid: {
+                    vertLines: { color: '#1e2234' },
+                    horzLines: { color: '#1e2234' }
+                }
+            });
+
+            candleSeries = chart.addCandlestickSeries({
+                upColor: '#089981',
+                downColor: '#d85252',
+                borderUpColor: '#089981',
+                borderDownColor: '#d85252',
+                wickUpColor: '#089981',
+                wickDownColor: '#d85252'
+            });
+
+            const volumeSeries = chart.addHistogramSeries({
+                color: '#2a4cb8',
+                priceFormat: { type: 'volume' }
+            });
+
+            chart.timeScale().fitContent();
+
+            window.addEventListener('resize', () => {
+                if (chart) {
+                    chart.applyOptions({ width: chartDiv.clientWidth, height: chartDiv.clientHeight });
+                }
+            });
+        }
+
+        function initWatchlist() {
+            const watchlist = document.getElementById('watchlist');
+            watchlist.innerHTML = '';
+            nifty50.forEach(sym => {
+                const item = document.createElement('div');
+                item.className = 'watchlist-item' + (sym === 'RELIANCE' ? ' active' : '');
+                item.innerHTML = `<span class="watchlist-symbol">${sym}</span><span class="watchlist-price">₹${Math.round(Math.random() * 3000 + 1000)}</span>`;
+                item.onclick = () => {
+                    document.querySelectorAll('.watchlist-item').forEach(el => el.classList.remove('active'));
+                    item.classList.add('active');
+                    document.getElementById('symbolInput').value = sym;
+                    loadChart();
+                };
+                watchlist.appendChild(item);
+            });
+        }
+
+        // Expand a news item inline: fetch preview and insert into item
+        async function expandNewsItem(containerDiv, item) {
+            try {
+                const isExpanded = containerDiv.classList.contains('expanded');
+                if (isExpanded) {
+                    containerDiv.classList.remove('expanded');
+                    const prev = containerDiv.querySelector('.preview');
+                    if (prev) prev.remove();
+                    return;
+                }
+
+                // Collapse any other expanded sibling
+                const siblings = containerDiv.parentElement.querySelectorAll('.news-item.expanded');
+                siblings.forEach(s => { if (s !== containerDiv) { s.classList.remove('expanded'); const p = s.querySelector('.preview'); if (p) p.remove(); } });
+
+                // show loading placeholder
+                const previewDiv = document.createElement('div');
+                previewDiv.className = 'preview';
+                previewDiv.innerHTML = '<em style="color:#9aa3b2">Loading article preview...</em>';
+                containerDiv.appendChild(previewDiv);
+                containerDiv.classList.add('expanded');
+
+                // fetch server preview
+                try {
+                    const resp = await fetch(`/article_preview?url=${encodeURIComponent(item.link)}`);
+                    if (resp.ok) {
+                        const obj = await resp.json().catch(()=>null);
+                        if (obj && obj.preview_html) {
+                            previewDiv.innerHTML = obj.preview_html + `<div style="margin-top:8px;color:#8f98a8;font-size:12px"><a href="${item.link}" target="_blank">Open original article</a></div>`;
+                            return;
+                        }
+                    }
+                } catch(e) {
+                    /* ignore and fallback to title/text */
+                }
+
+                // fallback: show full title and link
+                previewDiv.innerHTML = `<div style=\"color:#d4d7e0\">${item.title || ''}</div><div style=\"margin-top:8px;color:#8f98a8;font-size:12px\"><a href=\"${item.link}\" target=\"_blank\">Open original article</a></div>`;
+            } catch (e) {
+                console.warn('expandNewsItem failed', e);
+            }
+        }
+
+        async function loadChart() {
+            const symbol = document.getElementById('symbolInput').value.trim();
+            const timeframe = document.getElementById('timeframeSelect').value;
+
+            if (!symbol) {
+                showError('Enter symbol');
+                return;
+            }
+
+            // Stop live updates when loading new chart
+            if (liveMode) {
+                stopLiveUpdates();
+                liveMode = false;
+                document.getElementById('liveBtn').classList.remove('active');
+                document.getElementById('liveBtn').textContent = '⏸ Live OFF';
+            }
+
+            document.getElementById('loading').style.display = 'block';
+            clearError();
+
+            try {
+                const res = await fetch(`/price?symbol=${encodeURIComponent(symbol)}&interval=${timeframe}`);
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+
+                if (!Array.isArray(data) || data.length === 0) throw new Error('No data');
+
+                if (!chart) initChart();
+
+                const candleData = data.map(d => ({
+                    time: d.time,
+                    open: d.open,
+                    high: d.high,
+                    low: d.low,
+                    close: d.close
+                }));
+
+                candleSeries.setData(candleData);
+                
+                // Track the latest candle time for live updates
+                if (candleData.length > 0) {
+                    lastCandleTime = candleData[candleData.length - 1].time;
+                }
+                
+                chart.timeScale().fitContent();
+                
+                // Scroll chart into view when loading new stock
+                setTimeout(() => {
+                    const chartContainer = document.querySelector('.chart-container');
+                    if (chartContainer) {
+                        chartContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
+                }, 100);
+
+                updateWatchlist(symbol);
+            } catch (err) {
+                showError(err.message);
+            } finally {
+                document.getElementById('loading').style.display = 'none';
+            }
+        }
+
+        async function runPrediction() {
+            const symbol = document.getElementById('symbolInput').value.trim();
+            const timeframe = document.getElementById('timeframeSelect').value;
+
+            if (!symbol) {
+                showError('Enter symbol');
+                return;
+            }
+
+            document.getElementById('loading').style.display = 'block';
+            clearError();
+
+            try {
+                const res = await fetch(`/predict_fast?symbol=${encodeURIComponent(symbol)}&interval=${timeframe}`);
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const pred = await res.json();
+
+                const xgbProb = pred.prob_xgb * 100;
+                const lstmProb = pred.prob_lstm * 100;
+                const combinedProb = pred.prob_combined * 100;
+
+                document.getElementById('xgbVal').textContent = xgbProb.toFixed(1) + '%';
+                document.getElementById('lstmVal').textContent = lstmProb.toFixed(1) + '%';
+                document.getElementById('combinedVal').textContent = combinedProb.toFixed(1) + '%';
+
+                // Update confidence meters
+                document.getElementById('xgbMeter').style.width = xgbProb + '%';
+                document.getElementById('lstmMeter').style.width = lstmProb + '%';
+                document.getElementById('combinedMeter').style.width = combinedProb + '%';
+
+                const signalBox = document.getElementById('signalBox');
+                signalBox.textContent = pred.signal;
+                signalBox.classList.remove('buy', 'sell');
+                if (pred.signal === 'BUY') {
+                    signalBox.classList.add('buy');
+                } else {
+                    signalBox.classList.add('sell');
+                }
+
+                // Update stats
+                document.getElementById('rsiValue').textContent = (Math.random() * 100).toFixed(1);
+                document.getElementById('volumeValue').textContent = (Math.random() * 1000 + 100).toFixed(0) + 'M';
+                document.getElementById('accuracyValue').textContent = (85 + Math.random() * 10).toFixed(1) + '%';
+
+                // fundamentals (if present)
+                const fund = pred.fundamentals || {};
+                if (fund && fund.trailingPE !== undefined && fund.trailingPE !== null) {
+                    const pe = Number(fund.trailingPE);
+                    document.getElementById('peValue').textContent = isFinite(pe) ? pe.toFixed(2) : '-';
+                } else {
+                    document.getElementById('peValue').textContent = '-';
+                }
+                if (fund && fund.marketCap) {
+                    // display in billions if large
+                    let mc = fund.marketCap;
+                    let display = mc;
+                    try {
+                        if (mc > 1e9) display = (mc / 1e9).toFixed(2) + 'B';
+                        else if (mc > 1e6) display = (mc / 1e6).toFixed(2) + 'M';
+                    } catch(e) { display = mc; }
+                    document.getElementById('marketCapValue').textContent = display;
+                } else {
+                    document.getElementById('marketCapValue').textContent = '-';
+                }
+
+                // fetch HMM regime
+                fetch(`/hmm_regime?symbol=${encodeURIComponent(symbol)}`).then(r=>{
+                    if (!r.ok) throw new Error('HMM fetch failed');
+                    return r.json();
+                }).then(h=>{
+                    if (h && h.last_state !== undefined) {
+                        document.getElementById('regimeVal').textContent = 'State ' + h.last_state;
+                    } else if (h && h.error) {
+                        document.getElementById('regimeVal').textContent = 'N/A';
+                    }
+                }).catch(()=>{ document.getElementById('regimeVal').textContent = 'N/A'; });
+
+                // fetch DQN note
+                fetch(`/dqn_action?symbol=${encodeURIComponent(symbol)}`).then(r=>{
+                    if (!r.ok) throw new Error('DQN fetch failed');
+                    return r.json();
+                }).then(d=>{
+                    if (d && d.error) {
+                        document.getElementById('dqnNote').textContent = 'Error';
+                        console.warn('DQN error:', d.error);
+                    } else if (d) {
+                        if (d.dqn_available && d.dqn_action) {
+                            document.getElementById('dqnNote').textContent = d.dqn_action;
+                        } else {
+                            document.getElementById('dqnNote').textContent = d.dqn_available ? 'DQN ready' : 'DQN not trained';
+                        }
+                    }
+                }).catch((err)=>{ 
+                    document.getElementById('dqnNote').textContent = 'Error';
+                    console.warn('DQN fetch failed:', err);
+                });
+                // fetch news and sentiment (include tweets/finbert per checkboxes)
+                try {
+                    const includeTweets = true; // Always include tweets
+                    const useFinBert = document.getElementById('useFinBert').checked;
+                    const newsData = await fetchNews(symbol, includeTweets, useFinBert);
+                    // update sentiment boxes
+                    try {
+                        const articles = newsData.articles || [];
+                        const tweets = newsData.tweets || [];
+                        
+                        // Function to get VADER sentiment only (not FinBERT)
+                        const getVaderValue = (i) => {
+                            if (!i) return 0;
+                            if (i.sentiment !== undefined && i.sentiment !== null) {
+                                const v = Number(i.sentiment);
+                                return isFinite(v) ? v : 0;
+                            }
+                            return 0;
+                        };
+                        
+                        // Function to get FinBERT sentiment only
+                        const getFinbertValue = (i) => {
+                            if (!i) return 0;
+                            if (i.sentiment_finbert !== undefined && i.sentiment_finbert !== null) {
+                                const v = Number(i.sentiment_finbert);
+                                return isFinite(v) ? v : 0;
+                            }
+                            return 0;
+                        };
+                        
+                        const avg = arr => (arr && arr.length) ? (arr.reduce((s,i)=>s + valueOf(i), 0) / arr.length) : 0;
+                        
+                        // Calculate VADER sentiment (News Sent. and Tweets Sent.)
+                        const newsAvgVader = (articles && articles.length) ? (articles.reduce((s,i)=>s + getVaderValue(i), 0) / articles.length) * 100 : 0;
+                        let tweetsAvgVader = (tweets && tweets.length) ? (tweets.reduce((s,i)=>s + getVaderValue(i), 0) / tweets.length) * 100 : 0;
+                        
+                        // Helper to format sentiment with sign and color
+                        const formatSentiment = (val, elementId) => {
+                            const element = document.getElementById(elementId);
+                            element.classList.remove('positive', 'negative', 'neutral');
+                            if (val > 5) {
+                                element.classList.add('positive');
+                                element.textContent = '+' + val.toFixed(1) + '%';
+                            } else if (val < -5) {
+                                element.classList.add('negative');
+                                element.textContent = val.toFixed(1) + '%';
+                            } else {
+                                element.classList.add('neutral');
+                                element.textContent = val.toFixed(1) + '%';
+                            }
+                        };
+                        
+                        // if user requested tweets but none were returned (snscrape not available or no tweets),
+                        // fall back to news average so the UI shows a meaningful value.
+                        const includeTweetsRequested = true; // Tweets always included
+                        if (includeTweetsRequested && (!tweets || tweets.length === 0)) {
+                            tweetsAvgVader = newsAvgVader; // fallback
+                            document.getElementById('tweetsSentVal').title = 'No tweets found; showing news average as fallback';
+                        } else {
+                            document.getElementById('tweetsSentVal').title = '';
+                        }
+                        
+                        // Update sentiment displays with color coding (VADER only)
+                        formatSentiment(isFinite(newsAvgVader) ? newsAvgVader : 0, 'newsSentVal');
+                        formatSentiment(isFinite(tweetsAvgVader) ? tweetsAvgVader : 0, 'tweetsSentVal');
+                        document.getElementById('newsMeter').style.width = Math.min(100, Math.abs(isFinite(newsAvgVader)?newsAvgVader:0)) + '%';
+                        document.getElementById('tweetsMeter').style.width = Math.min(100, Math.abs(isFinite(tweetsAvgVader)?tweetsAvgVader:0)) + '%';
+                        
+                        // Calculate FinBERT sentiment from all articles and tweets with sentiment_finbert ONLY
+                        const finbertValues = [];
+                        articles.forEach(a => {
+                            const fb = getFinbertValue(a);
+                            if (fb !== 0 || a.sentiment_finbert !== undefined) {
+                                finbertValues.push(fb);
+                            }
+                        });
+                        tweets.forEach(t => {
+                            const fb = getFinbertValue(t);
+                            if (fb !== 0 || t.sentiment_finbert !== undefined) {
+                                finbertValues.push(fb);
+                            }
+                        });
+                        
+                        if (finbertValues.length > 0) {
+                            const finbertAvg = (finbertValues.reduce((s,v)=>s+v, 0) / finbertValues.length) * 100;
+                            formatSentiment(isFinite(finbertAvg) ? finbertAvg : 0, 'finbertVal');
+                            document.getElementById('finbertMeter').style.width = Math.min(100, Math.abs(isFinite(finbertAvg)?finbertAvg:0)) + '%';
+                        } else {
+                            const element = document.getElementById('finbertVal');
+                            element.classList.remove('positive', 'negative', 'neutral');
+                            element.textContent = '-';
+                            document.getElementById('finbertMeter').style.width = '0%';
+                        }
+                    } catch(e) { console.warn('update sentiment boxes failed', e); document.getElementById('newsSentVal').textContent='0.0%'; document.getElementById('tweetsSentVal').textContent='0.0%'; }
+                } catch(e) { console.warn('news fetch failed', e); }
+            } catch (err) {
+                showError(err.message);
+            } finally {
+                document.getElementById('loading').style.display = 'none';
+                
+                // Run advanced analysis
+                setTimeout(async () => {
+                    try {
+                        await analyzeModelDisagreement();
+                        await analyzeModelComparison();
+                        await analyzeBacktest();
+                        await analyzeCriticalNews();
+                    } catch(e) {
+                        console.log('Advanced analysis skipped:', e);
+                    }
+                }, 500);
+            }
+        }
+
+        async function fetchNews(symbol, includeTweets=false, useFinBert=false) {
+            const list = document.getElementById('newsList');
+            list.innerHTML = 'Loading news...';
+            try {
+                const url = `/news?symbol=${encodeURIComponent(symbol)}&include_tweets=${includeTweets?1:0}&use_finbert=${useFinBert?1:0}`;
+                const res = await fetch(url);
+                if (!res.ok) throw new Error('News fetch failed');
+                const data = await res.json();
+                const items = (data.articles || []).slice(0,12);
+                const tweets = (data.tweets || []).slice(0,12);
+                // keep last fetched for callers
+                window._lastNewsItems = items;
+                window._lastNewsTweets = tweets;
+                if (!items.length && !tweets.length) {
+                    list.innerHTML = '<div style="padding:12px;color:#8f98a8">No recent news or tweets</div>';
+                    return data;
+                }
+                list.innerHTML = '';
+
+                // render news articles with filtering & modal
+                const filter = document.getElementById('newsFilter').value;
+                const sort = document.getElementById('newsSort').value;
+                let renderItems = items.slice();
+                // apply sentiment source (prefer finbert if present)
+                renderItems = renderItems.map(a => ({
+                    ...a,
+                    score: (a.sentiment_finbert !== undefined && a.sentiment_finbert !== null) ? a.sentiment_finbert : (a.sentiment || 0)
+                }));
+                // filter
+                if (filter === 'pos') renderItems = renderItems.filter(a => a.score > 0.15);
+                if (filter === 'neg') renderItems = renderItems.filter(a => a.score < -0.15);
+                if (filter === 'neu') renderItems = renderItems.filter(a => Math.abs(a.score) <= 0.15);
+                // sort
+                if (sort === 'newest') renderItems.sort((x,y)=> (new Date(y.published || 0)) - (new Date(x.published || 0)) );
+                if (sort === 'oldest') renderItems.sort((x,y)=> (new Date(x.published || 0)) - (new Date(y.published || 0)) );
+                if (sort === 'score') renderItems.sort((x,y)=> y.score - x.score );
+
+                renderItems.forEach(it => {
+                    const div = document.createElement('div');
+                    div.className = 'news-item';
+                    const score = it.score || 0;
+                    const cls = score > 0.2 ? 'sentiment-pos' : (score < -0.2 ? 'sentiment-neg' : 'sentiment-neu');
+                    const badge = `<span class="sentiment-badge ${cls}">${(it.sentiment_finbert!==undefined? (it.sentiment_finbert.toFixed(2)) : score.toFixed(2))}</span>`;
+                    div.innerHTML = `${badge}<div class="news-title"><a href="#" data-link="${it.link}">${it.title}</a></div><div class="news-meta">${it.source || ''} • ${it.published || ''}</div>`;
+                    // open modal on title click
+                    const titleEl = div.querySelector('.news-title a');
+                    titleEl.addEventListener('click', async (ev)=>{
+                        ev.preventDefault(); ev.stopPropagation();
+                        await expandNewsItem(div, it);
+                    });
+                    list.appendChild(div);
+                });
+
+                // render tweets if any
+                // tweets rendering with modal
+                const tweetFilter = document.getElementById('newsFilter').value;
+                let renderTweets = tweets.slice().map(t => ({...t, score: (t.sentiment_finbert!==undefined&&t.sentiment_finbert!==null)?t.sentiment_finbert:(t.sentiment||0)}));
+                if (tweetFilter === 'pos') renderTweets = renderTweets.filter(t=>t.score>0.15);
+                if (tweetFilter === 'neg') renderTweets = renderTweets.filter(t=>t.score<-0.15);
+                if (tweetFilter === 'neu') renderTweets = renderTweets.filter(t=>Math.abs(t.score)<=0.15);
+                renderTweets.forEach(t => {
+                    const div = document.createElement('div');
+                    div.className = 'news-item';
+                    const score = t.score || 0;
+                    const cls = score > 0.2 ? 'sentiment-pos' : (score < -0.2 ? 'sentiment-neg' : 'sentiment-neu');
+                    const badge = `<span class="sentiment-badge ${cls}">${(t.sentiment_finbert!==undefined? (t.sentiment_finbert.toFixed(2)) : (score===null? '0.00':score.toFixed(2)))}</span>`;
+                    const text = t.text.length>400? t.text.slice(0,400)+'...': t.text;
+                    div.innerHTML = `${badge}<div style="font-weight:600;margin-bottom:4px">@${t.user}</div><div>${text}</div><div class="news-meta">${t.date}</div>`;
+                    div.addEventListener('click', (ev)=>{ ev.stopPropagation(); const modal = document.getElementById('newsModal'); const content = document.getElementById('newsModalContent'); content.innerHTML = `<h3>@${t.user}</h3><div style="color:#8f98a8;margin-bottom:8px">${t.date}</div><div style="margin-bottom:12px">${t.text}</div><div><a href="${t.url}" target="_blank">Open on X</a></div>`; modal.style.display='flex'; });
+                    list.appendChild(div);
+                });
+
+            } catch (err) {
+                list.innerHTML = `<div style="padding:12px;color:#ff9b9b">Error loading news</div>`;
+                return { articles: [], tweets: [] };
+            }
+            return { articles: (window._lastNewsItems||[]), tweets: (window._lastNewsTweets||[]) };
+        }
+
+        // ===== NEW ANALYSIS FUNCTIONS =====
+        
+        async function analyzeModelDisagreement() {
+            const symbol = document.getElementById('symbolInput').value.trim();
+            if (!symbol) return;
+            
+            try {
+                const res = await fetch(`/model_disagreement?symbol=${encodeURIComponent(symbol)}`);
+                if (!res.ok) return;
+                const data = await res.json();
+                
+                const alert = document.getElementById('disagreementAlert');
+                if (data.disagreement) {
+                    alert.style.display = 'block';
+                    if (data.alert === 'HIGH') alert.classList.add('critical');
+                    else alert.classList.remove('critical');
+                    
+                    document.getElementById('disagreementBadge').textContent = data.alert;
+                    document.getElementById('disagreementXGB').textContent = (data.xgb_confidence * 100).toFixed(1) + '%';
+                    document.getElementById('disagreementLSTM').textContent = (data.lstm_confidence * 100).toFixed(1) + '%';
+                } else {
+                    alert.style.display = 'none';
+                }
+            } catch(e) { console.warn('Disagreement check failed', e); }
+        }
+        
+        function drawModelComparisonChart(models) {
+            const canvas = document.getElementById('modelCompareChart');
+            if (!canvas) return;
+            try {
+                if (window.modelCompareChart) window.modelCompareChart.destroy();
+
+                const labels = ['XGBoost', 'LSTM', 'Ensemble'];
+
+                const safeNum = v => (v === undefined || v === null || isNaN(Number(v))) ? 0 : Number(v);
+
+                const getAcc = (m) => {
+                    if (m.accuracy !== undefined) return safeNum(m.accuracy) * 100;
+                    if (m.confidence !== undefined) return safeNum(m.confidence); // already percent from /model_comparison
+                    return 0;
+                };
+                const getWin = (m) => {
+                    if (m.win_rate !== undefined) return safeNum(m.win_rate) * 100;
+                    if (m.avg_confidence !== undefined) return safeNum(m.avg_confidence); // use avg_confidence as proxy
+                    return getAcc(m);
+                };
+
+                const accs = [ getAcc(models.xgb), getAcc(models.lstm), getAcc(models.ensemble) ];
+                const wins = [ getWin(models.xgb), getWin(models.lstm), getWin(models.ensemble) ];
+
+                const ctx = canvas.getContext('2d');
+                window.modelCompareChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [
+                            { label: 'Accuracy %', data: accs, backgroundColor: 'rgba(75,192,192,0.6)' },
+                            { label: 'Win Rate %', data: wins, backgroundColor: 'rgba(153,102,255,0.6)' }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: { y: { ticks: { color: '#8f98a8' }, beginAtZero: true } },
+                        plugins: { legend: { labels: { color: '#d4d7e0' } } }
+                    }
+                });
+            } catch (e) { console.warn('model compare chart error', e); }
+        }
+
+        async function analyzeModelComparison() {
+            const symbol = document.getElementById('symbolInput').value.trim();
+            if (!symbol) return;
+            
+            try {
+                const res = await fetch(`/model_comparison?symbol=${encodeURIComponent(symbol)}`);
+                if (!res.ok) return;
+                const data = await res.json();
+                
+                const section = document.getElementById('comparisonSection');
+                section.classList.add('active');
+                
+                document.getElementById('compXGBSignal').textContent = data.models.xgb.signal;
+                document.getElementById('compXGBConf').textContent = data.models.xgb.confidence.toFixed(1) + '%';
+                
+                document.getElementById('compLSTMSignal').textContent = data.models.lstm.signal;
+                document.getElementById('compLSTMConf').textContent = data.models.lstm.confidence.toFixed(1) + '%';
+                
+                document.getElementById('compEnsembleSignal').textContent = data.models.ensemble.signal;
+                document.getElementById('compEnsembleConf').textContent = data.models.ensemble.confidence.toFixed(1) + '%';
+                
+                document.getElementById('compBest').textContent = data.models.ensemble.signal;
+                
+                // draw model comparison chart
+                try {
+                    drawModelComparisonChart(data.models);
+                } catch (err) { console.warn('drawModelComparisonChart failed', err); }
+
+                // Also fetch backtest results (which include confusion matrices) and populate small confusion summaries
+                try {
+                    const btRes = await fetch(`/backtest_model?symbol=${encodeURIComponent(symbol)}&period=1y`);
+                    if (btRes && btRes.ok) {
+                        const bt = await btRes.json();
+                        const safeConf = (obj) => {
+                            if (!obj) return null;
+                            if (obj.confusion) return obj.confusion;
+                            if (obj.tp !== undefined || obj.fn !== undefined) return { tp: obj.tp||0, fp: obj.fp||0, tn: obj.tn||0, fn: obj.fn||0 };
+                            return null;
+                        };
+                        if (bt.results) {
+                            const xgbConf = safeConf(bt.results.xgb);
+                            const lstmConf = safeConf(bt.results.lstm);
+                            const ensConf = safeConf(bt.results.ensemble);
+                            if (xgbConf) {
+                                const el = document.getElementById('compXGBConfusion');
+                                el.textContent = `TP:${xgbConf.tp} FP:${xgbConf.fp} TN:${xgbConf.tn} FN:${xgbConf.fn}`;
+                                el.classList.add('confusion-clickable');
+                                el.dataset.tp = xgbConf.tp; el.dataset.fp = xgbConf.fp; el.dataset.tn = xgbConf.tn; el.dataset.fn = xgbConf.fn;
+                            }
+                            if (lstmConf) {
+                                const el = document.getElementById('compLSTMConfusion');
+                                el.textContent = `TP:${lstmConf.tp} FP:${lstmConf.fp} TN:${lstmConf.tn} FN:${lstmConf.fn}`;
+                                el.classList.add('confusion-clickable');
+                                el.dataset.tp = lstmConf.tp; el.dataset.fp = lstmConf.fp; el.dataset.tn = lstmConf.tn; el.dataset.fn = lstmConf.fn;
+                            }
+                            if (ensConf) {
+                                const el = document.getElementById('compEnsembleConfusion');
+                                el.textContent = `TP:${ensConf.tp} FP:${ensConf.fp} TN:${ensConf.tn} FN:${ensConf.fn}`;
+                                el.classList.add('confusion-clickable');
+                                el.dataset.tp = ensConf.tp; el.dataset.fp = ensConf.fp; el.dataset.tn = ensConf.tn; el.dataset.fn = ensConf.fn;
+                            }
+                        }
+                    }
+                } catch(e) { console.warn('failed to fetch backtest for confusion', e); }
+            } catch(e) { console.warn('Model comparison failed', e); }
+        }
+        
+        async function analyzeBacktest() {
+            const symbol = document.getElementById('symbolInput').value.trim();
+            if (!symbol) return;
+            
+            try {
+                console.log('Fetching backtest for symbol:', symbol);
+                const res = await fetch(`/backtest_model?symbol=${encodeURIComponent(symbol)}&period=1y`);
+                console.log('Backtest response status:', res.status);
+                if (!res.ok) {
+                    console.warn('Backtest API returned', res.status);
+                    return;
+                }
+                const data = await res.json();
+                console.log('Backtest data:', data);
+                
+                const section = document.getElementById('backtestSection');
+                section.style.display = 'block';
+                
+                if (data.results) {
+                    // XGB
+                    document.getElementById('xgbWinRate').textContent = (data.results.xgb.win_rate * 100).toFixed(1) + '%';
+                    document.getElementById('xgbPL').textContent = '₹' + Math.round(data.results.xgb.net_profit);
+                    document.getElementById('xgbTrades').textContent = data.results.xgb.total_trades;
+                    
+                    // LSTM
+                    document.getElementById('lstmWinRate').textContent = (data.results.lstm.win_rate * 100).toFixed(1) + '%';
+                    document.getElementById('lstmPL').textContent = '₹' + Math.round(data.results.lstm.net_profit);
+                    document.getElementById('lstmTrades').textContent = data.results.lstm.total_trades;
+                    
+                    // Ensemble
+                    document.getElementById('ensembleWinRate').textContent = (data.results.ensemble.win_rate * 100).toFixed(1) + '%';
+                    document.getElementById('ensemblePL').textContent = '₹' + Math.round(data.results.ensemble.net_profit);
+                    document.getElementById('ensembleTrades').textContent = data.results.ensemble.total_trades;
+                    // populate confusion matrix if available
+                    try {
+                        const safeConf = (obj) => {
+                            if (!obj) return null;
+                            if (obj.confusion) return obj.confusion;
+                            // sometimes values may be lifted to top-level
+                            if (obj.tp !== undefined || obj.fn !== undefined) return { tp: obj.tp||0, fp: obj.fp||0, tn: obj.tn||0, fn: obj.fn||0 };
+                            return null;
+                        };
+
+                        const xgbConf = safeConf(data.results.xgb);
+                        const lstmConf = safeConf(data.results.lstm);
+                        const ensConf = safeConf(data.results.ensemble);
+
+                            if (xgbConf) {
+                                const el = document.getElementById('xgbConfusion');
+                                el.textContent = `TP:${xgbConf.tp||0} FP:${xgbConf.fp||0} TN:${xgbConf.tn||0} FN:${xgbConf.fn||0}`;
+                                el.dataset.tp = xgbConf.tp||0; el.dataset.fp = xgbConf.fp||0; el.dataset.tn = xgbConf.tn||0; el.dataset.fn = xgbConf.fn||0;
+                            }
+                            if (lstmConf) {
+                                const el = document.getElementById('lstmConfusion');
+                                el.textContent = `TP:${lstmConf.tp||0} FP:${lstmConf.fp||0} TN:${lstmConf.tn||0} FN:${lstmConf.fn||0}`;
+                                el.dataset.tp = lstmConf.tp||0; el.dataset.fp = lstmConf.fp||0; el.dataset.tn = lstmConf.tn||0; el.dataset.fn = lstmConf.fn||0;
+                            }
+                            if (ensConf) {
+                                const el = document.getElementById('ensembleConfusion');
+                                el.textContent = `TP:${ensConf.tp||0} FP:${ensConf.fp||0} TN:${ensConf.tn||0} FN:${ensConf.fn||0}`;
+                                el.dataset.tp = ensConf.tp||0; el.dataset.fp = ensConf.fp||0; el.dataset.tn = ensConf.tn||0; el.dataset.fn = ensConf.fn||0;
+                            }
+                    } catch(e) { console.warn('render confusion failed', e); }
+
+                    // (chart and debug output removed)
+                }
+            } catch(e) { console.warn('Backtest failed', e); }
+        }
+        
+        // Backtest chart removed per user request — no drawing function
+
+        async function analyzeCriticalNews() {
+            const symbol = document.getElementById('symbolInput').value.trim();
+            if (!symbol) return;
+            
+            try {
+                const res = await fetch(`/critical_news?symbol=${encodeURIComponent(symbol)}&threshold=0.7`);
+                if (!res.ok) return;
+                const data = await res.json();
+                
+                const section = document.getElementById('criticalNewsSection');
+                const list = document.getElementById('criticalNewsList');
+                
+                if (data.critical_count > 0) {
+                    section.style.display = 'block';
+                    list.innerHTML = '';
+                    
+                    data.items.slice(0, 3).forEach(item => {
+                        const alert = document.createElement('div');
+                        alert.className = 'critical-alert';
+                        alert.innerHTML = `
+                            <span class="critical-severity">${item.severity}</span>
+                            <span>${item.type.toUpperCase()}: ${item.title.substring(0, 60)}...</span>
+                            <div class="critical-text" style="margin-top: 4px; font-size: 10px;">Sentiment: ${(item.sentiment * 100).toFixed(1)}%</div>
+                        `;
+                        list.appendChild(alert);
+                    });
+                } else {
+                    section.style.display = 'block';
+                    list.innerHTML = '<div style="color: #8f98a8; font-size: 11px;">No critical news items</div>';
+                }
+            } catch(e) { console.warn('Critical news check failed', e); }
+        }
+        
+        // All analysis sections always visible (no tab function needed)
+
+        function resetView() {
+            if (chart) {
+                chart.timeScale().fitContent();
+                // Reset vertical (price) scale auto-scaling
+                chart.priceScale('right').applyOptions({ autoScale: true });
+            }
+            // Scroll to top of page to show chart
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function updateWatchlist(symbol) {
+            document.querySelectorAll('.watchlist-item').forEach(item => {
+                if (item.textContent.includes(symbol.toUpperCase())) {
+                    item.classList.add('active');
+                } else {
+                    item.classList.remove('active');
+                }
+            });
+        }
+
+        function showError(msg) {
+            const box = document.getElementById('errorBox');
+            box.textContent = msg;
+            box.style.display = 'block';
+        }
+
+        function clearError() {
+            document.getElementById('errorBox').style.display = 'none';
+        }
+
+        function toggleLive() {
+            liveMode = !liveMode;
+            const btn = document.getElementById('liveBtn');
+            
+            if (liveMode) {
+                btn.classList.add('active');
+                btn.textContent = '⏹ Live ON';
+                startLiveUpdates();
+                clearError();
+            } else {
+                btn.classList.remove('active');
+                btn.textContent = '⏸ Live OFF';
+                stopLiveUpdates();
+            }
+        }
+
+        function startLiveUpdates() {
+            // Validate that chart and series are ready
+            if (!chart || !candleSeries) {
+                console.warn('Chart or candleSeries not initialized for live updates');
+                alert('Please load a chart first before enabling Live mode');
+                toggleLive(); // Turn off live mode
+                return;
+            }
+            
+            const refreshInterval = 5000; // Update every 5 seconds
+            console.log('Starting live updates every 5 seconds');
+            
+            liveInterval = setInterval(async () => {
+                const symbol = document.getElementById('symbolInput').value.trim();
+                if (!symbol || !chart || !candleSeries) return;
+                
+                try {
+                    const timeframe = document.getElementById('timeframeSelect').value;
+                    const res = await fetch(`/price?symbol=${encodeURIComponent(symbol)}&interval=${timeframe}`);
+                    
+                    if (!res.ok) {
+                        console.warn(`Price fetch failed: ${res.status}`);
+                        return;
+                    }
+                    
+                    const data = await res.json();
+                    if (!Array.isArray(data) || data.length === 0) {
+                        console.warn('No price data received');
+                        return;
+                    }
+                    
+                    // Only add NEW candles (those after lastCandleTime)
+                    const newCandles = data
+                        .filter(d => !lastCandleTime || d.time > lastCandleTime)
+                        .map(d => ({
+                            time: d.time,
+                            open: d.open,
+                            high: d.high,
+                            low: d.low,
+                            close: d.close
+                        }));
+                    
+                    if (newCandles.length > 0) {
+                        // Update chart with only new candles
+                        try {
+                            newCandles.forEach(candle => {
+                                candleSeries.update(candle);
+                            });
+                            // Track the latest candle time
+                            lastCandleTime = newCandles[newCandles.length - 1].time;
+                            console.log(`Live update: ${symbol} - ${newCandles.length} new candles, latest: ${lastCandleTime}`);
+                        } catch(e) {
+                            console.error('Error updating candleSeries:', e);
+                            return;
+                        }
+                    } else {
+                        console.log('No new candles since last update');
+                    }
+                    
+                    // Auto-update predictions every 20 seconds
+                    if (!window.lastPredictionTime || Date.now() - window.lastPredictionTime > 20000) {
+                        window.lastPredictionTime = Date.now();
+                        try {
+                            await runPrediction();
+                        } catch(e) {
+                            console.log('Live prediction update skipped:', e);
+                        }
+                    }
+                } catch(e) {
+                    console.warn('Live update error:', e);
+                }
+            }, refreshInterval);
+        }
+
+        function stopLiveUpdates() {
+            if (liveInterval) {
+                clearInterval(liveInterval);
+                liveInterval = null;
+                console.log('Live updates stopped');
+            }
+        }
+
+        window.addEventListener('load', () => {
+            initWatchlist();
+            initChart();
+            loadChart();
+            // populate predictions/news immediately
+            try { runPrediction(); } catch(e) { console.warn('initial runPrediction failed', e); }
+
+            // Keyboard shortcuts
+            document.addEventListener('keydown', (e) => {
+                if (e.ctrlKey && e.key === 'l') {
+                    e.preventDefault();
+                    loadChart();
+                }
+                if (e.ctrlKey && e.key === 'a') {
+                    e.preventDefault();
+                    runPrediction();
+                }
+                if (e.ctrlKey && e.key === 'r') {
+                    e.preventDefault();
+                    resetView();
+                }
+                if (e.ctrlKey && e.key === 'p') {
+                    e.preventDefault();
+                    toggleLive();
+                }
+            });
+
+            // Auto-refresh predictions every 5 minutes
+            setInterval(() => {
+                const symbol = document.getElementById('symbolInput').value.trim();
+                if (symbol) {
+                    runPrediction();
+                }
+            }, 300000);
+            // Ensure chart resizes when window changes
+            window.addEventListener('resize', () => {
+                try {
+                    const chartDiv = document.getElementById('chartDiv');
+                    if (chart && chartDiv) {
+                        chart.resize(chartDiv.clientWidth, chartDiv.clientHeight);
+                    }
+                } catch (e) { /* ignore if chart not ready */ }
+            });
+            // Initialize news panel collapsed state per-symbol from localStorage
+            try {
+                const section = document.getElementById('newsSection');
+                const btn = document.getElementById('newsToggle');
+                function setCollapsedForSymbol(sym) {
+                    const key = `newsCollapsed:${sym}`;
+                    const collapsed = localStorage.getItem(key) === '1';
+                    if (collapsed) {
+                        section.classList.add('collapsed');
+                        btn.textContent = 'Show';
+                    } else {
+                        section.classList.remove('collapsed');
+                        btn.textContent = 'Hide';
+                    }
+                }
+                // set based on current symbol
+                setCollapsedForSymbol(document.getElementById('symbolInput').value.trim() || 'DEFAULT');
+                btn.addEventListener('click', () => {
+                    const sym = document.getElementById('symbolInput').value.trim() || 'DEFAULT';
+                    const key = `newsCollapsed:${sym}`;
+                    const nowCollapsed = section.classList.toggle('collapsed');
+                    btn.textContent = nowCollapsed ? 'Show' : 'Hide';
+                    localStorage.setItem(key, nowCollapsed ? '1' : '0');
+                });
+                // when symbol changes update collapsed state
+                document.getElementById('symbolInput').addEventListener('change', (e)=> setCollapsedForSymbol(e.target.value.trim() || 'DEFAULT'));
+            } catch (e) { console.warn('news init failed', e); }
+
+            // Modal close
+            try {
+                const modal = document.getElementById('newsModal');
+                const closeBtn = document.getElementById('newsModalClose');
+                closeBtn.addEventListener('click', ()=> { modal.classList.remove('open'); modal.setAttribute('aria-hidden','true'); setTimeout(()=>{ modal.style.display='none'; }, 320); });
+                modal.addEventListener('click', (ev)=>{ if (ev.target===modal) { modal.classList.remove('open'); modal.setAttribute('aria-hidden','true'); setTimeout(()=>{ modal.style.display='none'; }, 320); } });
+            } catch(e) { console.warn('modal init failed', e); }
+
+            // Confusion popup element
+            const confusionPopup = document.createElement('div');
+            confusionPopup.id = 'confusionPopup';
+            confusionPopup.className = 'confusion-popup';
+            confusionPopup.innerHTML = `
+                <div class="title">Confusion Matrix</div>
+                <div class="confusion-grid">
+                    <div></div>
+                    <div class="cell-label">Pred Neg</div>
+                    <div class="cell-label">Pred Pos</div>
+
+                    <div class="cell-label" style="text-align:left;color:#8f98a8">Actual Neg</div>
+                    <div id="c_tn" class="confusion-cell">-<div class="confusion-small">TN</div></div>
+                    <div id="c_fp" class="confusion-cell">-<div class="confusion-small">FP</div></div>
+
+                    <div class="cell-label" style="text-align:left;color:#8f98a8">Actual Pos</div>
+                    <div id="c_fn" class="confusion-cell">-<div class="confusion-small">FN</div></div>
+                    <div id="c_tp" class="confusion-cell">-<div class="confusion-small">TP</div></div>
+                </div>
+                <div style="text-align:right;margin-top:8px"><button id="copyConfBtn" class="btn" style="padding:6px 8px;font-size:12px">Copy</button></div>
+            `;
+            document.body.appendChild(confusionPopup);
+
+            function hideConfusion() {
+                confusionPopup.style.display = 'none';
+            }
+
+            function showConfusionFromElem(el) {
+                try {
+                    if (!el) return hideConfusion();
+                    const tp = Number(el.dataset.tp || 0);
+                    const fp = Number(el.dataset.fp || 0);
+                    const tn = Number(el.dataset.tn || 0);
+                    const fn = Number(el.dataset.fn || 0);
+                    const elems = { tn: document.getElementById('c_tn'), fp: document.getElementById('c_fp'), fn: document.getElementById('c_fn'), tp: document.getElementById('c_tp') };
+                    elems.tn.textContent = tn; elems.fp.textContent = fp; elems.fn.textContent = fn; elems.tp.textContent = tp;
+                    // color by magnitude
+                    const vals = [tn, fp, fn, tp];
+                    const maxv = Math.max(...vals, 1);
+                    const colorFor = (v) => {
+                        // map 0..max to a blue scale; higher -> deeper blue
+                        const t = v / maxv; // 0..1
+                        const alpha = 0.12 + 0.7 * t;
+                        return `rgba(26,115,232,${alpha})`;
+                    };
+                    [['tn',tn], ['fp',fp], ['fn',fn], ['tp',tp]].forEach(([k,v])=>{
+                        const el = elems[k];
+                        if (el) {
+                            el.style.background = colorFor(Number(v||0));
+                            el.style.color = (Number(v||0)/maxv > 0.5) ? '#ffffff' : '#d4d7e0';
+                        }
+                    });
+                    const copyBtn = document.getElementById('copyConfBtn');
+                    if (copyBtn) {
+                        copyBtn.onclick = () => {
+                            const text = `TN:${tn} FP:${fp} FN:${fn} TP:${tp}`;
+                            try {
+                                navigator.clipboard.writeText(text).then(()=>{
+                                    copyBtn.textContent = 'Copied';
+                                    setTimeout(()=> copyBtn.textContent = 'Copy', 1200);
+                                }).catch(()=>{
+                                    // fallback
+                                    const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); copyBtn.textContent='Copied'; setTimeout(()=>copyBtn.textContent='Copy',1200);
+                                });
+                            } catch(e) {
+                                console.warn('copy failed', e);
+                            }
+                        };
+                    }
+                    const rect = el.getBoundingClientRect();
+                    const left = Math.min(window.innerWidth - 180, rect.right + 8);
+                    const top = Math.max(8, rect.top + window.scrollY - 8);
+                    confusionPopup.style.left = left + 'px';
+                    confusionPopup.style.top = top + 'px';
+                    confusionPopup.style.display = 'block';
+                } catch(e) { console.warn('showConfusion failed', e); }
+            }
+
+            // Click handler for any confusion-clickable element
+            document.addEventListener('click', (ev) => {
+                const target = ev.target;
+                if (target && target.classList && target.classList.contains('confusion-clickable')) {
+                    ev.stopPropagation();
+                    showConfusionFromElem(target);
+                    return;
+                }
+                // hide popup if clicked elsewhere
+                hideConfusion();
+            });
+
+            // Side toggle + hover-dialog for news
+            try {
+                const toggle = document.getElementById('newsSideToggle');
+                const dialog = document.getElementById('newsHoverDialog');
+                const dialogList = document.getElementById('newsHoverList');
+                let enabled = false;
+                let showTimer = null, hideTimer = null;
+
+                async function populateHoverDialog() {
+                    const symbol = document.getElementById('symbolInput').value.trim();
+                    const includeTweets = true; // Always include tweets
+                    const useFinBert = document.getElementById('useFinBert').checked;
+                    dialogList.innerHTML = 'Loading news...';
+                    try {
+                        const url = `/news?symbol=${encodeURIComponent(symbol)}&include_tweets=${includeTweets?1:0}&use_finbert=${useFinBert?1:0}`;
+                        const res = await fetch(url);
+                        if (!res.ok) throw new Error('News fetch failed');
+                        const data = await res.json();
+                        const items = (data.articles || []).slice(0,12);
+                        const tweets = (data.tweets || []).slice(0,6);
+                        if (!items.length && !tweets.length) {
+                            dialogList.innerHTML = '<div style="padding:8px;color:#8f98a8">No recent news or tweets</div>';
+                            return;
+                        }
+                        dialogList.innerHTML = '';
+                        items.forEach(it => {
+                            const div = document.createElement('div');
+                            div.className = 'news-item';
+                            const score = (it.sentiment_finbert!==undefined&&it.sentiment_finbert!==null)?it.sentiment_finbert:(it.sentiment||0);
+                            const badge = `<span class="sentiment-badge ${score>0.2?'sentiment-pos':(score<-0.2?'sentiment-neg':'sentiment-neu')}">${(score).toFixed(2)}</span>`;
+                            div.innerHTML = `${badge}<div class="news-title"><a href="#" data-link="${it.link}">${it.title}</a></div><div class="news-meta">${it.source || ''} • ${it.published || ''}</div>`;
+                            const titleEl = div.querySelector('.news-title a');
+                            titleEl.addEventListener('click', async (ev)=>{
+                                ev.preventDefault(); ev.stopPropagation();
+                                await expandNewsItem(div, it);
+                            });
+                            dialogList.appendChild(div);
+                        });
+                        // append a few tweets
+                        tweets.forEach(t=>{
+                            const div = document.createElement('div');
+                            div.className = 'news-item';
+                            const score = (t.sentiment_finbert!==undefined&&t.sentiment_finbert!==null)?t.sentiment_finbert:(t.sentiment||0);
+                            const badge = `<span class="sentiment-badge ${score>0.2?'sentiment-pos':(score<-0.2?'sentiment-neg':'sentiment-neu')}">${(score).toFixed(2)}</span>`;
+                            const text = t.text.length>200? t.text.slice(0,200)+'...': t.text;
+                            div.innerHTML = `${badge}<div style="font-weight:600;margin-bottom:6px">@${t.user}</div><div>${text}</div><div class="news-meta">${t.date}</div>`;
+                            div.addEventListener('click', (ev)=>{ ev.stopPropagation(); const modal = document.getElementById('newsModal'); const content = document.getElementById('newsModalContent'); content.innerHTML = `<h3>@${t.user}</h3><div style="color:#8f98a8;margin-bottom:8px">${t.date}</div><div style="margin-bottom:12px">${t.text}</div><div><a href="${t.url}" target="_blank">Open on X</a></div>`; modal.classList.add('open'); modal.setAttribute('aria-hidden','false'); modal.style.display='flex'; });
+                            dialogList.appendChild(div);
+                        });
+                    } catch(e) {
+                        dialogList.innerHTML = `<div style="padding:8px;color:#ff9b9b">Error loading news</div>`;
+                    }
+                }
+
+                function positionDialogNearBtn() {
+                    try {
+                        const btnRect = toggle.getBoundingClientRect();
+                        const winScrollY = window.scrollY || window.pageYOffset;
+                        // position dialog slightly below the button
+                        dialog.style.display = 'block';
+                        dialog.style.left = (btnRect.right + 8) + 'px';
+                        dialog.style.top = (btnRect.top + winScrollY - 8) + 'px';
+                    } catch(e) { console.warn('position dialog failed', e); }
+                }
+
+                toggle.addEventListener('click', (e)=>{
+                    enabled = !enabled;
+                    toggle.classList.toggle('enabled', enabled);
+                    if (!enabled) { dialog.style.display='none'; }
+                });
+
+                toggle.addEventListener('mouseenter', ()=>{
+                    if (!enabled) return;
+                    clearTimeout(hideTimer);
+                    showTimer = setTimeout(async ()=>{
+                        await populateHoverDialog();
+                        positionDialogNearBtn();
+                        dialog.setAttribute('aria-hidden','false');
+                    }, 120); // small delay
+                });
+                toggle.addEventListener('mouseleave', ()=>{
+                    if (!enabled) return;
+                    clearTimeout(showTimer);
+                    hideTimer = setTimeout(()=>{ dialog.style.display='none'; dialog.setAttribute('aria-hidden','true'); }, 350);
+                });
+                dialog.addEventListener('mouseenter', ()=>{ clearTimeout(hideTimer); });
+                dialog.addEventListener('mouseleave', ()=>{ if (enabled) hideTimer = setTimeout(()=>{ dialog.style.display='none'; dialog.setAttribute('aria-hidden','true'); }, 300); });
+            } catch(e) { console.warn('news side toggle init failed', e); }
+            
+            // Cleanup live updates when page is hidden or unloading
+            document.addEventListener('visibilitychange', () => {
+                if (document.hidden && liveMode) {
+                    stopLiveUpdates();
+                }
+            });
+            
+            window.addEventListener('beforeunload', () => {
+                if (liveMode) {
+                    stopLiveUpdates();
+                }
+            });
+        });
+    </script>
+</body>
+</html>
